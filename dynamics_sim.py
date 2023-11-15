@@ -147,7 +147,7 @@ if __name__ == "__main__":
     # Parse arguments
     parser = argparse.ArgumentParser()
     parser.add_argument('--n_quads', type=int, default=10, help='Number of (random) quadrotors to simulate')
-    parser.add_argument('--dt', type=int, default=0.002, help='Time steps for simulation')
+    parser.add_argument('--dt', type=int, default=0.01, help='Time steps for simulation')
     parser.add_argument('--T', type=int, default=10, help='Time to simulate')
     args = parser.parse_args()
 
