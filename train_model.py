@@ -1,11 +1,11 @@
-import json
 import argparse
+import tqdm
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 from load_data import TrajectoryDataset
 
 
@@ -59,6 +59,9 @@ class DynamicsModel(nn.Module):
         super(DynamicsModel, self).__init__()
 
         assert len(num_neurons) == num_shared + num_sep, "Number of (total) layers should match the length of the 'num_neurons' list."
+
+        # Save the number of shared layers for fine-tuning later
+        self.register_buffer('num_shared', torch.tensor([num_shared]))
 
         # Define shared layers
         shared_layers = []
@@ -167,13 +170,13 @@ optimizer = optim.Adam(dynamics_model.parameters(), lr=1e-4)
 scheduler = StepLR(optimizer, step_size=100, gamma=0.95)
 
 # Training loop
-num_epochs = int(1e5)
-n_save = 1e3
-n_log = 1e2
+num_epochs = int(1e3)
+n_save = 1e2
+n_log = 1e1
 if args.train:
     train_losses = []
     val_losses = []
-    for epoch in range(num_epochs):
+    for epoch in tqdm.tqdm(range(num_epochs)):
         train_loss, val_loss = train(train_loader, val_loader, dynamics_model, optimizer, device)
         train_losses.append(train_loss)
         val_losses.append(val_loss)
