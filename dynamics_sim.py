@@ -104,7 +104,7 @@ def run_quad_sim(measured_params, quad_params, constants, dt, T):
 
     # Initialize trajectory (time, states, control inputs)
     N = int(T / dt)+1
-    trajectory = np.zeros((N, 18))
+    trajectory = np.zeros((N, 24))
     trajectory[:, 0] = np.linspace(0, T, N)
 
     # Define initial conditions
@@ -130,10 +130,12 @@ def run_quad_sim(measured_params, quad_params, constants, dt, T):
 
         # Control inputs with stochastic term
         u = u_hover + np.array([correction] * 4) + np.random.uniform(-1, 1, size=4) * u_eps
-        trajectory[t_idx, 14:] = u
+        trajectory[t_idx, 14:18] = u
 
         # Get force and torques
         F, tau = quad_actuation(u, quad_params)
+        trajectory[t_idx, 18:21] = F
+        trajectory[t_idx, 21:24] = tau
 
         # Simulate dynamics
         x_dot = rigid_body_dynamics(trajectory[t_idx, 1:14], F, tau, measured_params, constants)
