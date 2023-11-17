@@ -1,12 +1,15 @@
 import argparse
 import tqdm
 import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.data import DataLoader
+
 from load_data import TrajectoryDataset
+from model import DynamicsModel
 
 
 # Parse command line arguments
@@ -45,71 +48,6 @@ val_loader = DataLoader(val_data, batch_size=1, shuffle=True)
 test_quad_ids = list(range(num_train + num_val + 1, n_quads + 1))
 test_data = TrajectoryDataset(test_quad_ids)
 test_loader = DataLoader(test_data, batch_size=1, shuffle=True)
-
-
-# Model that returns the forces and torques as two separate heads, with n_shared shared layers followed by n_head layers
-class DynamicsModel(nn.Module):
-    def __init__(self,
-                 num_inputs: int = 17,
-                 num_shared: int = 3,
-                 num_sep: int = 2,
-                 num_neurons: list = [256, 128, 64, 32, 16],
-                 num_outputs: int = 3,
-                 act: nn.Module = nn.ReLU()):
-        super(DynamicsModel, self).__init__()
-
-        assert len(num_neurons) == num_shared + num_sep, "Number of (total) layers should match the length of the 'num_neurons' list."
-
-        # Save the number of shared layers for fine-tuning later
-        self.register_buffer('num_shared', torch.tensor([num_shared]))
-
-        # Define shared layers
-        shared_layers = []
-        # Input layer
-        shared_layers.append(nn.Linear(num_inputs, num_neurons[0]))
-        shared_layers.append(act)
-        # Hidden layers
-        for i in range(num_shared - 1):
-            shared_layers.append(nn.Linear(num_neurons[i], num_neurons[i + 1]))
-            shared_layers.append(act)
-        self.shared_layers = nn.ModuleList(shared_layers)
-
-        # Define force layers
-        force_layers = []
-        for j in range(num_sep):
-            force_layers.append(nn.Linear(num_neurons[num_shared + j - 1], num_neurons[num_shared + j]))
-            force_layers.append(act)
-        force_layers.append(nn.Linear(num_neurons[num_shared + num_sep - 1], num_outputs))
-        self.force_layers = nn.ModuleList(force_layers)
-
-        # Define torque layers
-        torque_layers = []
-        for j in range(num_sep):
-            torque_layers.append(nn.Linear(num_neurons[num_shared + j - 1], num_neurons[num_shared + j]))
-            torque_layers.append(act)
-        torque_layers.append(nn.Linear(num_neurons[num_shared + num_sep - 1], num_outputs))
-        self.torque_layers = nn.ModuleList(torque_layers)
-
-    def forward(self, x):
-        # Shared layers
-        for layer in self.shared_layers:
-            x = layer(x)
-
-        # Split the path for force and torque
-        force_x = x
-        torque_x = x
-
-        # Force head
-        for layer in self.force_layers:
-            force_x = layer(force_x)
-        forces = force_x
-
-        # Torque head
-        for layer in self.torque_layers:
-            torque_x = layer(torque_x)
-        torques = torque_x
-
-        return forces, torques
 
 
 # Training function
@@ -157,7 +95,7 @@ def train(train_loader, val_loader, model, optimizer, device):
     # Average the validation losses
     total_val_loss /= n_val
 
-    return total_train_loss, total_val_loss
+    return total_train_loss.detach(), total_val_loss.detach()
 
 
 # Create model
@@ -170,7 +108,7 @@ optimizer = optim.Adam(dynamics_model.parameters(), lr=1e-4)
 scheduler = StepLR(optimizer, step_size=100, gamma=0.95)
 
 # Training loop
-num_epochs = int(1e3)
+num_epochs = int(1e2)
 n_save = 1e2
 n_log = 1e1
 if args.train:
@@ -178,8 +116,8 @@ if args.train:
     val_losses = []
     for epoch in tqdm.tqdm(range(num_epochs)):
         train_loss, val_loss = train(train_loader, val_loader, dynamics_model, optimizer, device)
-        train_losses.append(train_loss)
-        val_losses.append(val_loss)
+        train_losses.append(train_loss.cpu())
+        val_losses.append(val_loss.cpu())
         if epoch % n_save == 0 or epoch == num_epochs - 1:
             torch.save(dynamics_model.state_dict(), f'models/{model_name}.pt')
         if epoch % n_log == 0:
