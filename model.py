@@ -15,6 +15,7 @@ class DynamicsModel(nn.Module):
 
         assert len(num_neurons) == num_shared + num_sep, "Number of (total) layers should match the length of the 'num_neurons' list."
 
+        # TODO: remove this (unnecessary)
         # Save the number of shared layers for fine-tuning later
         self.register_buffer('num_shared', torch.tensor([num_shared]))
 
