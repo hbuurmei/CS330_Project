@@ -18,7 +18,7 @@ from train_model import train
 parser = argparse.ArgumentParser()
 parser.add_argument('--fine_tune', help='fine-tune model', action=argparse.BooleanOptionalAction)
 parser.add_argument('--scratch', help='train model from scratch', action=argparse.BooleanOptionalAction)
-parser.add_argument('--mode', default='last', help='Fine-tuning mode')  # {shared, head, all}
+parser.add_argument('--mode', default='head', help='Fine-tuning mode')  # {shared, head, all}
 args = parser.parse_args()
 
 device = (
@@ -37,7 +37,7 @@ torch.manual_seed(seed)
 # Data that shall be used for fine-tuning
 ft_quad_ids = [10]
 dataset = TrajectoryDataset(ft_quad_ids)
-n_train = int(0.005 * len(dataset))
+n_train = int(0.1 * len(dataset))
 n_val = int(0.1 * len(dataset))
 n_test = len(dataset) - n_train - n_val
 train_data, val_data, test_data = random_split(dataset, [n_train, n_val, n_test])
@@ -48,8 +48,6 @@ test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
 
 # Get parameters to be fine-tuned function
 def parameters_to_fine_tune(model, mode):
-    # Get the parameters to tune
-    num_shared = model.num_shared
     if mode == 'shared':
         ft_params = list(model.shared_layers.parameters())
     elif mode == 'head':
@@ -72,7 +70,7 @@ optimizer = optim.Adam(dynamics_model_scratch.parameters(), lr=1e-3)
 scheduler = StepLR(optimizer, step_size=10, gamma=0.9)
 
 # Training loop
-num_epochs = int(1e2)
+num_epochs = int(1e3)
 n_save = 1e2
 n_log = 1e1
 if args.scratch:
@@ -110,9 +108,9 @@ optimizer = optim.Adam(ft_params, lr=1e-3)
 scheduler = StepLR(optimizer, step_size=10, gamma=0.9)
 
 # Training loop
-num_epochs = int(1e2)
+num_epochs = int(1e3)
 n_save = 1e2
-n_log = 1e1
+n_log = 1e2
 if args.fine_tune:
     train_losses = []
     val_losses = []
@@ -132,13 +130,15 @@ else:
     dynamics_model_ft.load_state_dict(torch.load(f'models/{model_ft_name}_{mode}.pt'))
 
 
-# Evaluate models (scratch vs fine-tuned)
+# Evaluate model on test set
 def evaluate_model(model, loader, device):
     model.eval()
     criterion = nn.MSELoss()
     loss = 0
     with torch.no_grad():
+        i = 0
         for test_traj in loader:
+            i += 1
             states = test_traj['states'].to(dtype=torch.float32, device=device)
             controls = test_traj['controls'].to(dtype=torch.float32, device=device)
             inputs = torch.cat((states, controls), dim=1)
@@ -146,7 +146,6 @@ def evaluate_model(model, loader, device):
             torques = test_traj['torques'].to(dtype=torch.float32, device=device)
             pred_forces, pred_torques = model(inputs)
             loss += criterion(pred_forces, forces) + criterion(pred_torques, torques)
-    
     return loss / len(loader)
 
 
@@ -166,3 +165,11 @@ plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.legend()
 plt.savefig(f'figures/ft_training_losses.png')
+
+plt.figure()
+plt.plot(val_losses_scratch, label='Scratch')
+plt.plot(val_losses_ft, label='Fine-tuned')
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.legend()
+plt.savefig(f'figures/ft_validation_losses.png')

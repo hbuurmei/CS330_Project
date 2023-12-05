@@ -39,6 +39,28 @@ def rigid_body_dynamics(x, F, tau, measured_params, constants):
     return x_dot
 
 
+def integrate_velocity_exp_map(q, om, dt):
+    """
+    Integrate angular rate to find quaternion using the exponential map.
+    """
+    # Calculate the quaternion exponential
+    omega_magnitude = np.linalg.norm(om)
+    if omega_magnitude > 1e-10:  # to avoid division by zero
+        # print(omega_magnitude)
+        q_exp = [np.cos(0.5 * omega_magnitude * dt), 
+                    *(np.sin(0.5 * omega_magnitude * dt) * om / omega_magnitude)]
+    else:
+        q_exp = [1, 0, 0, 0]  # identity quaternion for small angular velocities
+    
+    # Update the quaternion
+    q = np.quaternion(*q_exp) * np.quaternion(*q)
+    q = quaternion.as_float_array(q)
+
+    # Normalize quaternion (theoretically not necessary, but numerically recommended)
+    q /=  np.linalg.norm(q)
+    return q
+
+
 def quad_actuation(u, quad_params):
     """
     Mapping from control inputs to force and torques for a 3D quadrotor.
@@ -47,17 +69,22 @@ def quad_actuation(u, quad_params):
     L = quad_params['L']
     kF = quad_params['kF']
     kM = quad_params['kM']
+    thetas = quad_params['phis']
     phis = quad_params['phis']
 
     # Control inputs to force is just the sum
-    F = np.array([0, 0, kF * np.sum(u * np.cos(np.array(phis)))])
+    F = np.array([
+        np.sum([kF * u * np.sin(thetas[i]) * np.cos(phis[i]) for i in range(len(u))]),
+        np.sum([kF * u * np.sin(thetas[i]) * np.sin(phis[i]) for i in range(len(u))]),
+        np.sum([kF * u * np.cos(thetas[i]) for i in range(len(u))])
+        ])
 
     # Control inputs to torques
     tau = np.array([
         L * kF * (u[3] * np.cos(phis[3]) - u[1] * np.cos(phis[1])),
         L * kF * (u[2] * np.cos(phis[2]) - u[0] * np.cos(phis[0])),
         kM * (u[0] * np.cos(phis[0]) - u[1] * np.cos(phis[1]) + u[2] * np.cos(phis[2]) - u[3] * np.cos(phis[3]))
-    ])
+        ])
 
     return F, tau
 
@@ -69,17 +96,18 @@ def generate_quads(n_quads):
     for quad_idx in range(n_quads):
         # Sample measured parameters
         m = np.random.uniform(0.5, 1.5)
-        Ixx = np.random.uniform(0.001, 0.005)
-        Iyy = np.random.uniform(0.001, 0.005)
-        Izz = np.random.uniform(0.001, 0.005)
+        Ixx = np.random.uniform(1, 5)
+        Iyy = np.random.uniform(1, 5)
+        Izz = np.random.uniform(1, 5)
         measured_params = {'m': m, 'Ixx': Ixx, 'Iyy': Iyy, 'Izz': Izz}
         
         # Sample parameters
         L = np.random.uniform(0.1, 0.2)
         kF = np.random.uniform(0.1, 0.3)
-        kM = np.random.uniform(0.05, 0.25)
-        phis = [np.random.uniform(-1, 1) * np.pi/180 for _ in range(4)]  # offset angles w.r.t. vertical (for each propeller)
-        quad_params = {'L': L, 'kF': kF, 'kM': kM, 'phis': phis}
+        kM = np.random.uniform(0.01, 0.05)
+        phis = [np.random.uniform(-1, 1) * np.pi for _ in range(4)]  # offset angles w.r.t. vertical (for each propeller)
+        thetas = [np.random.uniform(-10, 10) * np.pi/180 for _ in range(4)]  # offset angles in horizontal plane (for each propeller)
+        quad_params = {'L': L, 'kF': kF, 'kM': kM, 'thetas': thetas, 'phis': phis}
 
         # Create directory if it doesn't exist
         if not os.path.exists('quad_sim_data'):
@@ -100,7 +128,7 @@ def run_quad_sim(measured_params, quad_params, constants, dt, T):
     Run a simulation of a quadrotor.
     """
     # Proportional constant for altitude control
-    Kp = 1.0
+    Kp_om = 1.0
 
     # Initialize trajectory (time, states, control inputs)
     N = int(T / dt)+1
@@ -122,14 +150,16 @@ def run_quad_sim(measured_params, quad_params, constants, dt, T):
     # Simulate dynamics
     trajectory[0, 1:14] = x0
     for t_idx in range(N-1):
-        # Calculate altitude error correction
-        desired_altitude = 10
-        current_altitude = trajectory[t_idx, 3]
-        error = desired_altitude - current_altitude
-        correction = Kp * error
+        # Calculate angular velocity error correction
+        desired_om = np.array([0, 0, 0])
+        current_om = trajectory[t_idx, 11:14]
+        om_error = desired_om - current_om
+        om_correction = Kp_om * om_error
 
         # Control inputs with stochastic term
-        u = u_hover + np.array([correction] * 4) + np.random.uniform(-1, 1, size=4) * u_eps
+        u = u_hover + np.random.uniform(-1, 1, size=4) * u_eps
+        u[3] = om_correction[0] + u[1]
+        u[2] = om_correction[1] + u[0]
         trajectory[t_idx, 14:18] = u
 
         # Get force and torques
@@ -139,8 +169,9 @@ def run_quad_sim(measured_params, quad_params, constants, dt, T):
 
         # Simulate dynamics
         x_dot = rigid_body_dynamics(trajectory[t_idx, 1:14], F, tau, measured_params, constants)
-        trajectory[t_idx+1, 1:14] = trajectory[t_idx, 1:14] + x_dot * dt
-        trajectory[t_idx+1, 7:11] = trajectory[t_idx+1, 7:11] / np.linalg.norm(trajectory[t_idx+1, 7:11])  # normalize quaternions
+        trajectory[t_idx+1, 1:7] = trajectory[t_idx, 1:7] + x_dot[0:6] * dt  # integrate position and velocity
+        trajectory[t_idx+1, 7:11] = integrate_velocity_exp_map(trajectory[t_idx, 7:11], trajectory[t_idx, 11:14], dt)  # integrate quaternion
+        trajectory[t_idx+1, 11:14] = trajectory[t_idx, 11:14] + x_dot[10:13] * dt  # integrate angular velocity
 
     return trajectory
 

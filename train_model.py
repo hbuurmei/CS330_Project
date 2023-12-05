@@ -63,8 +63,8 @@ def train(train_loader, val_loader, model, optimizer, device):
 if __name__ == '__main__':
     # Parse command line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument('--n_quads', type=int, default=10, help='Number of quadrotors to train on')
     parser.add_argument('--train', help='train model', action=argparse.BooleanOptionalAction)
+    parser.add_argument('--n_quads', type=int, default=10, help='Number of quadrotors to train on')
     args = parser.parse_args()
 
     device = (
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     scheduler = StepLR(optimizer, step_size=100, gamma=0.95)
 
     # Training loop
-    num_epochs = int(1e2)
+    num_epochs = int(1e3)
     n_save = 1e2
     n_log = 1e1
     if args.train:
