@@ -85,7 +85,7 @@ if args.scratch:
         if epoch % n_log == 0:
             print(f"Epoch {epoch}/{num_epochs}, Training Loss: {train_loss:.5e}, Validation Loss: {val_loss:.5e}")
     
-    print("Training from scratch Complete!")
+    print("Training from scratch complete!")
     np.save(f'results/{model_scratch_name}_train_losses.npy', np.array(train_losses))
     np.save(f'results/{model_scratch_name}_val_losses.npy', np.array(val_losses))
 else:
@@ -95,7 +95,7 @@ else:
 # Load model we want to fine-tune
 dynamics_model_ft = DynamicsModel()
 dynamics_model_ft.to(device)
-model_name = 'dynamics_model'
+model_name = 'dynamics_model_full'
 dynamics_model_ft.load_state_dict(torch.load(f'models/{model_name}.pt'))
 model_ft_name = 'dynamics_model_ft'
 
@@ -123,7 +123,7 @@ if args.fine_tune:
         if epoch % n_log == 0:
             print(f"Epoch {epoch}/{num_epochs}, Training Loss: {train_loss:.5e}, Validation Loss: {val_loss:.5e}")
     
-    print("Fine-tuning Complete!")
+    print("Fine-tuning complete!")
     np.save(f'results/{model_ft_name}_{mode}_train_losses.npy', np.array(train_losses))
     np.save(f'results/{model_ft_name}_{mode}_val_losses.npy', np.array(val_losses))
 else:

@@ -101,17 +101,17 @@ if __name__ == '__main__':
     # Create model
     dynamics_model = DynamicsModel()
     dynamics_model.to(device)
-    model_name = 'dynamics_model'
+    model_name = 'dynamics_model_full'
 
     # Create an optimizer and learning rate scheduler
     optimizer = optim.Adam(dynamics_model.parameters(), lr=1e-4)
     scheduler = StepLR(optimizer, step_size=100, gamma=0.95)
 
     # Training loop
-    num_epochs = int(1e3)
-    n_save = 1e2
-    n_log = 1e1
     if args.train:
+        num_epochs = int(1e3)
+        n_save = 1e2
+        n_log = 1e1
         train_losses = []
         val_losses = []
         for epoch in tqdm.tqdm(range(num_epochs)):
@@ -123,7 +123,7 @@ if __name__ == '__main__':
             if epoch % n_log == 0:
                 print(f"Epoch {epoch}/{num_epochs}, Training Loss: {train_loss:.5e}, Validation Loss: {val_loss:.5e}")
         
-        print("Training Complete!")
+        print("Training complete!")
         np.save(f'results/{model_name}_train_losses.npy', np.array(train_losses))
         np.save(f'results/{model_name}_val_losses.npy', np.array(val_losses))
     else:
