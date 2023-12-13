@@ -5,6 +5,7 @@ from copy import deepcopy
 
 import torch
 from torch import nn
+import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 
 from load_data import TrajectoryDataset
@@ -18,7 +19,6 @@ parser.add_argument('--train_eval', help='train Reptile on evaluation set', acti
 parser.add_argument('--n_quads', type=int, default=10, help='Number of quadrotors to train on')
 parser.add_argument('--inner_stepsize', type=float, default=0.02, help='Stepsize in inner SGD')
 parser.add_argument('--inner_epochs', type=int, default=2, help='Number of epochs in inner SGD')
-parser.add_argument('--outer_stepsize0', type=float, default=0.1, help='Starting stepsize of outer optimization')
 args = parser.parse_args()
 
 device = (
@@ -59,7 +59,10 @@ test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
 # Create model
 dynamics_model_reptile = DynamicsModel()
 dynamics_model_reptile.to(device)
-model_name = 'dynamics_model_reptile_meta'
+model_name = 'dynamics_model_reptile_meta_adam'
+
+# Create optimizer
+optimizer = optim.Adam(dynamics_model_reptile.parameters(), lr=1e-4)
 
 
 def train_inner_reptile(train_loader, val_loader, model, device, args):
@@ -132,23 +135,24 @@ if args.meta_train:
         # For the outer optimization, we use the meta-gradient as (weights_before - weights_after)
         # which is essentially interpolating between current weights and trained weights from this task
         weights_after = dynamics_model_reptile.state_dict()
-        outerstepsize = args.outer_stepsize0 * (1 - it / num_it)  # linear schedule
-        dynamics_model_reptile.load_state_dict({name : 
-            weights_before[name] + (weights_after[name] - weights_before[name]) * outerstepsize 
-            for name in weights_before})
+        # Use Adam with (weights_after - weights_before) as gradient
+        optimizer.zero_grad()
+        for name, param in dynamics_model_reptile.named_parameters():
+            param.grad = weights_after[name] - weights_before[name]
+        optimizer.step()
 
         if it % n_save == 0 or it == num_it - 1:
             torch.save(dynamics_model_reptile.state_dict(), f'models/{model_name}.pt')
         if it % n_log == 0:
             print(f"it {it}/{num_it}, Training Loss: {train_loss:.5e}, Validation Loss: {val_loss:.5e}")
-        
+
     print("Reptile meta-training complete!")
     np.save(f'results/{model_name}_train_losses.npy', np.array(train_losses))
     np.save(f'results/{model_name}_val_losses.npy', np.array(val_losses))
 else:
     dynamics_model_reptile.load_state_dict(torch.load(f'models/{model_name}.pt'))
 
-model_name = 'dynamics_model_reptile'
+model_name = 'dynamics_model_reptile_adam'
 test_quad_ids = [10]
 dataset = TrajectoryDataset(test_quad_ids)
 n_train = int(0.1 * len(dataset))
@@ -168,8 +172,6 @@ if args.train_eval:
     val_losses = []
     for epoch in range(num_epochs):
         train_loss, val_loss = train_inner_reptile(train_loader, val_loader, dynamics_model_reptile, device, args)
-        train_losses.append(train_loss.cpu())
-        val_losses.append(val_loss.cpu())
 
         if epoch % n_save == 0 or epoch == num_epochs - 1:
             torch.save(dynamics_model_reptile.state_dict(), f'models/{model_name}_test_train.pt')
@@ -213,4 +215,4 @@ plt.plot(val_losses_reptile, label='Val')
 plt.xlabel('Epoch')
 plt.ylabel('Loss')
 plt.legend()
-plt.savefig(f'figures/reptile_losses.png')
+plt.savefig(f'figures/reptile_adam_losses.png')
