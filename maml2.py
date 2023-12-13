@@ -235,20 +235,13 @@ class MAML:
             self._optimizer.step()
 
             # Save model
-            if i_step % 100 == 0:
+            if i_step % 10 == 0:
                 torch.save(self._meta_parameters, f'models/dynamics_model_maml_base.pt')
 
 
-    def test(self, train_data, test_data, iterations):
+    def test(self, train_data, test_data):
         """Evaluate the MAML on test tasks."""
-        outer_losses = []
-        for _ in range(iterations):
-            outer_loss = self._outer_step(train_data, train=False)
-            outer_losses.append(outer_loss.item())
-
-        # Save outer losses
-        model_name = 'dynamics_model_maml'
-        np.save(f'results/{model_name}_train_losses.npy', np.array(outer_losses))
+        outer_loss = self._outer_step(train_data, train=False)
 
         test_loader = DataLoader(test_data, batch_size=1, shuffle=False)
         criterion = nn.MSELoss()
@@ -299,7 +292,7 @@ def main(args):
             task_train_data = TrajectoryDataset([train_quad_id])
             task_train_datasets.append(task_train_data)
         task_train_datasets *= args.num_train_iterations
-        maml.train(task_train_datasets, args.batch_size, args.num_train_iterations)
+        maml.train(task_train_datasets, args.num_train_iterations, args.batch_size)
     else:
         # Load the pretrained model
         maml._meta_parameters = torch.load('models/dynamics_model_maml_base.pt')
@@ -309,9 +302,8 @@ def main(args):
         n_val = int(0.1 * len(test_data))
         n_test = len(test_data) - n_train - n_val
         train_data, _, test_data = random_split(test_data, [n_train, n_val, n_test])
-        test_loss = maml.test(train_data, test_data, args.num_train_iterations)
+        test_loss = maml.test(train_data, test_data)
         print(f"MAML model test MSE: {test_loss:.5e}")
-
 
 
 if __name__ == '__main__':
@@ -328,7 +320,7 @@ if __name__ == '__main__':
                         help='outer-loop learning rate')
     parser.add_argument('--batch_size', type=int, default=16,
                         help='number of tasks per outer-loop update')
-    parser.add_argument('--num_train_iterations', type=int, default=1000,
+    parser.add_argument('--num_train_iterations', type=int, default=100,
                         help='number of outer-loop updates to train for')
     parser.add_argument('--test', default=False, action='store_true',
                         help='train or test')
