@@ -3,6 +3,7 @@ import json
 import argparse
 import tqdm
 import numpy as np
+import torch
 import quaternion
 import matplotlib.pyplot as plt
 
@@ -182,19 +183,23 @@ if __name__ == "__main__":
     parser.add_argument('--n_quads', type=int, default=10, help='Number of (random) quadrotors to simulate')
     parser.add_argument('--dt', type=int, default=0.01, help='Time steps for simulation')
     parser.add_argument('--T', type=int, default=10, help='Time to simulate')
+    parser.add_argument('--eval', default=False, action='store_true', help='Generate training data or evaluate models')
     args = parser.parse_args()
-
-    # Generate random quadrotor parameters
-    generate_quads(args.n_quads)
 
     # Define constants
     constants = {'g': 9.81}
 
-    for quad_idx in tqdm.tqdm(range(args.n_quads)):
-        # Load parameters
-        with open(f'quad_sim_data/quad{quad_idx+1}/measured_params.json', 'r') as f:
-            measured_params = json.load(f)
-        with open(f'quad_sim_data/quad{quad_idx+1}/quad_params.json', 'r') as f:
-            quad_params = json.load(f)
-        trajectory = run_quad_sim(measured_params, quad_params, constants, args.dt, args.T)
-        np.savetxt(f'quad_sim_data/quad{quad_idx+1}/trajectory.csv', trajectory, delimiter=',')
+    if not args.eval:
+        # Generate random quadrotor parameters
+        generate_quads(args.n_quads)
+
+        for quad_idx in tqdm.tqdm(range(args.n_quads)):
+            # Load parameters
+            with open(f'quad_sim_data/quad{quad_idx+1}/measured_params.json', 'r') as f:
+                measured_params = json.load(f)
+            with open(f'quad_sim_data/quad{quad_idx+1}/quad_params.json', 'r') as f:
+                quad_params = json.load(f)
+            trajectory = run_quad_sim(measured_params, quad_params, constants, args.dt, args.T)
+            np.savetxt(f'quad_sim_data/quad{quad_idx+1}/trajectory.csv', trajectory, delimiter=',')
+    else:
+
