@@ -269,13 +269,14 @@ def plot_errors(gt_trajectory, trajectories):
 
     axs[0].set_ylabel('Position Error [m]')
     axs[1].set_ylabel('Velocity Error [m/s]')
-    axs[2].set_ylabel('Quaternion Error')
-    axs[3].set_ylabel('Angular Velocity Error [rad/s]')
+    axs[2].set_ylabel('Quaternion Error [-]')
+    axs[3].set_ylabel('Ang. Velocity Error [rad/s]')
     axs[3].set_xlabel('Timestep')
     axs[0].legend()
     axs[1].legend()
     axs[2].legend()
     axs[3].legend()
+    plt.tight_layout()
     plt.savefig('figures/trajectory_errors.png')
 
 
