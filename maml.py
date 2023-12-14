@@ -251,7 +251,7 @@ class MAML:
     def test(self, train_data, test_data):
         """Evaluate the MAML on test tasks."""
         train_loader = DataLoader(train_data, batch_size=16, shuffle=True)
-        for _ in range(2):
+        for _ in range(10):
             parameters = self._inner_loop(train_loader, train=False)
             self._meta_parameters = parameters
 
@@ -259,9 +259,7 @@ class MAML:
         loss = nn.MSELoss()
         test_loss = 0
         with torch.no_grad():
-            i = 0
             for test_traj in test_loader:
-                i += 1
                 states = test_traj['states'].to(dtype=torch.float32, device=self.device)
                 controls = test_traj['controls'].to(dtype=torch.float32, device=self.device)
                 inputs = torch.cat((states, controls), dim=1)
@@ -272,7 +270,7 @@ class MAML:
                 tau_loss = loss(pred_torques, torques)
                 sample_loss = F_WEIGHT*F_loss/torch.mean(F_loss) + TAU_WEIGHT*tau_loss/torch.mean(tau_loss)
                 test_loss += sample_loss
-        test_loss = loss / len(test_loader)
+        test_loss = test_loss / len(test_loader)
         return test_loss
 
 
